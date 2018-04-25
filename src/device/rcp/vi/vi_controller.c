@@ -96,13 +96,15 @@ void read_vi_regs(void* opaque, uint32_t address, uint32_t* value)
             cp0_update_count(vi->mi->r4300);
             vi->regs[VI_CURRENT_REG] = (vi->delay - (*next_vi - cp0_regs[CP0_COUNT_REG])) / vi->count_per_scanline;
 
-            /* wrap around VI_CURRENT_REG if needed */
-            if (vi->regs[VI_CURRENT_REG] >= vi->regs[VI_V_SYNC_REG])
-                vi->regs[VI_CURRENT_REG] -= vi->regs[VI_V_SYNC_REG];
-        }
+            if (!(vi->regs[VI_V_SYNC_REG] & 0x1)) {
+                /* update current field */
+                vi->regs[VI_CURRENT_REG] = (vi->regs[VI_CURRENT_REG] & (~1)) | vi->field;
+            }
 
-        /* update current field */
-        vi->regs[VI_CURRENT_REG] = (vi->regs[VI_CURRENT_REG] & (~1)) | vi->field;
+            /* wrap around VI_CURRENT_REG if needed */
+            if (vi->regs[VI_CURRENT_REG] > (vi->regs[VI_V_SYNC_REG] &~1))
+                vi->regs[VI_CURRENT_REG] -= vi->regs[VI_V_SYNC_REG] | vi->field;
+        }
     }
 
     *value = vi->regs[reg];
@@ -166,7 +168,7 @@ void vi_vertical_interrupt_event(void* opaque)
     new_vi();
 
     /* toggle vi field if in interlaced mode */
-    vi->field ^= (vi->regs[VI_STATUS_REG] >> 6) & 0x1;
+    vi->field ^= !(vi->regs[VI_V_SYNC_REG] & 0x1);
 
     /* schedule next vertical interrupt */
     uint32_t next_vi = *get_event(&vi->mi->r4300->cp0.q, VI_INT) + vi->delay;
